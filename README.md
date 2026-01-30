@@ -13,3 +13,18 @@ Among 2,813 U.S. women aged 18–59 years, 178 (6.33%) reported a lifetime histo
 
 ## Conclusion: 
 A history of PID was significantly associated with increased odds of infertility among U.S. women, even after adjusting for socioeconomic and healthcare related variables. These findings reinforce the importance of early STI detection, timely PID treatment, and improved access to reproductive healthcare to prevent long-term fertility complications. Public health efforts should prioritize PID prevention and equitable access to care to reduce the burden of preventable infertility.
+
+## Variables
+  Exposure:
+  * PID history (self-reported diagnosis)
+
+  Outcome:
+  * Infertility (≥12 months attempting pregnancy)
+
+Covariates:
+* Age
+* Race/ethnicity
+* Income-to-poverty ratio
+* Insurance status
+* Usual source of care
+  
