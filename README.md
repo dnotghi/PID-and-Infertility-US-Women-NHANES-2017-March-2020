@@ -1,2 +1,2 @@
-# PID-and-Infertility-US-Women-NHANES-2017-March-2020
-Survey-weighted NHANES 2017–2020 cross-sectional analysis of PID and infertility among U.S. women using descriptive statistics, chi-square tests, and multivariable logistic regression conducted in SAS.
+## Pelvic Inflammatory Disease and Infertility in U.S. Women: A Population-Based Study from NHANES 2017- March 2020
+This project examines the association between pelvic inflammatory disease (PID) and infertility among U.S. women using nationally representative NHANES 2017–2020 data. The goal is to estimate infertility prevalence and evaluate whether a history of PID is associated with increased odds of infertility after accounting for demographic, socioeconomic, and healthcare access factors.
