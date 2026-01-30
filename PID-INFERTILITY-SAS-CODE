@@ -1,0 +1,226 @@
+*load NHANES data set;
+*load in variable PID, infertility status, have u ever been to an MD for infertility;
+Title "Table 1: Sample Characteristics of U.S. Women Aged 18-49 Years, By History of Pelvic Inflammatory Disease (PID), (National Health and Nutrition Examination Survey, 2017-2020), (N=) ";
+filename P_RHQ url "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_RHQ.xpt";
+libname P_RHQ xport;
+
+proc copy inlib= P_RHQ out=work;
+run;
+
+*copy datasets to permanent dataset;
+libname NHANES "/home/u63890076/Capstone";
+
+data NHANES.P_RHQ;
+  set P_RHQ;
+run;
+
+*load in age, gender, income to poverty ratio, race/ethnicity;
+filename P_DEMO url "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_DEMO.xpt";
+libname P_DEMO xport;
+proc copy inlib= P_DEMO out=work;
+run;
+libname NHANES "/home/u63890076/Capstone";
+data NHANES.P_DEMO;
+  set P_DEMO;
+run;
+
+*load in health insurance status;
+filename P_HIQ url "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_HIQ.xpt";
+libname P_HIQ xport;
+proc copy inlib= P_HIQ out=work;
+run;
+libname NHANES "/home/u63890076/Capstone";
+data NHANES.P_HIQ;
+  set P_HIQ;
+run;
+
+*load in hospitalization utilization & access to care variable;
+filename P_HUQ url "https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2017/DataFiles/P_HUQ.xpt";
+libname P_HUQ xport;
+proc copy inlib = P_HUQ out=work;
+run;
+libname NHANES "/home/u63890076/Capstone";
+data NHANES.P_HUQ;
+  set P_HUQ;
+run;
+
+/* Sort each dataset before merging */
+proc sort data=NHANES.P_DEMO; by SEQN; run;
+proc sort data=NHANES.P_RHQ;  by SEQN; run;
+proc sort data=NHANES.P_HIQ;  by SEQN; run;
+proc sort data=NHANES.P_HUQ;  by SEQN; run;
+
+*merge NHANES datasets;
+DATA NHANES.MERGE;
+    MERGE 
+      NHANES.P_DEMO (KEEP=SEQN RIAGENDR RIDAGEYR RIDRETH3 INDFMPIR SDMVSTRA SDMVPSU WTINTPRP)
+      NHANES.P_RHQ  (KEEP=SEQN RHQ074 RHQ078 RHQ076)
+      NHANES.P_HIQ  (KEEP=SEQN HIQ011)
+     NHANES.P_HUQ  (KEEP=SEQN HUQ030);
+    BY SEQN;
+
+    /* Restrict to women aged 18–59 (targets of RHQ items) */
+    IF RIAGENDR=2 AND 18<=RIDAGEYR<=59;
+
+    /* Recode interview items per codebooks
+       1=Yes, 2=No, 7=Refused, 9=Don't know → missing */
+    /* Exposure: PID history (RHQ078) */
+    IF RHQ078=1 THEN PID=1;
+    ELSE IF RHQ078=2 THEN PID=0;
+    ELSE PID=.;
+
+    /* Outcome: infertility (≥12 months trying) (RHQ074) */
+    IF RHQ074=1 THEN INFERT=1;
+    ELSE IF RHQ074=2 THEN INFERT=0;
+    ELSE INFERT=.;
+
+    /* Infertility care seeking (RHQ076) */
+    IF RHQ076=1 THEN INFERT_CARE=1;
+    ELSE IF RHQ076=2 THEN INFERT_CARE=0;
+    ELSE INFERT_CARE=.;
+
+    /* Health insurance (HIQ011) */
+    IF HIQ011=1 THEN INSURED=1;
+    ELSE IF HIQ011=2 THEN INSURED=0;
+    ELSE INSURED=.;
+
+    /* Usual place for care (HUQ030: 1 Yes, 2 No, 3 More than one place -> treat as No; 7/9 missing) */
+    IF HUQ030=1 THEN ACCESSCARE=1;
+    ELSE IF HUQ030 IN (2,3) THEN ACCESSCARE=0;
+    ELSE ACCESSCARE=.;
+
+    /* Income-to-Poverty Ratio (continuous + 3-cat) */
+if INDFMPIR < 1 then PIR_CAT=1;   /* Low    */
+else if 1 <= INDFMPIR and INDFMPIR < 3 then PIR_CAT=2;   /* Medium */
+else if INDFMPIR >= 3 then PIR_CAT=3;   /* High   */
+else PIR_CAT=.;
+
+
+    /* Keep necessary variables (interview weight) */
+    KEEP SEQN RIDAGEYR RIDRETH3 INDFMPIR PIR_CAT
+         INSURED ACCESSCARE INFERT_CARE
+         PID INFERT SDMVSTRA SDMVPSU WTINTPRP;
+RUN;
+
+*descriptive code;
+/* readable labels for prints */
+proc format;
+  value ridfmt 1='Mexican American' 2='Other Hispanic' 3='Non-Hispanic White'
+               4='Non-Hispanic Black' 6='Non-Hispanic Asian' 7='Other/Multi-Racial';
+  value ynfmt  0='No' 1='Yes';
+run;
+/* -------- Continuous (Age, PIR): overall + by PID in one go -------- */
+proc means data=NHANES.MERGE n mean std maxdec=2;
+  class PID;                                /* gives rows for PID=0,1 and overall */
+  var RIDAGEYR INDFMPIR;
+  where PID in (0,1);
+  output out=T1_Cont
+    n=Age_N PIR_N
+    mean=Age_Mean PIR_Mean
+    std=Age_SD PIR_SD;
+run;
+/* Use: in T1_Cont, _TYPE_=0 is overall; _TYPE_=1 are the PID rows. */
+
+/* -------- Categorical: OVERALL % (one-way) -------- */
+proc freq data=NHANES.MERGE;
+  format RIDRETH3 ridfmt.;
+  tables RIDRETH3 / out=T1_Race_Overall;
+  where PID in (0,1);
+run;
+
+proc freq data=NHANES.MERGE;
+  format INSURED ACCESSCARE INFERT_CARE ynfmt.;
+  tables INSURED    / out=T1_Ins_Overall;
+  tables ACCESSCARE / out=T1_Care_Overall;
+  tables INFERT_CARE/ out=T1_InfCare_Overall;
+  where PID in (0,1);
+run;
+
+/* -------- Categorical: by PID (two-way; use column % within PID) -------- */
+proc freq data=NHANES.MERGE;
+  format RIDRETH3 ridfmt. PID ynfmt.;
+  tables PID*RIDRETH3 / out=T1_Race_ByPID outpct;     /* use PCT_COL */
+  where PID in (0,1);
+run;
+
+proc freq data=NHANES.MERGE;
+  format INSURED ACCESSCARE INFERT_CARE ynfmt. PID ynfmt.;
+  tables PID*INSURED     / out=T1_Ins_ByPID outpct;
+  tables PID*ACCESSCARE  / out=T1_Care_ByPID outpct;
+  tables PID*INFERT_CARE / out=T1_InfCare_ByPID outpct;
+  where PID in (0,1);
+run;
+
+*table 2;
+TITLE "Association Between PID History and Infertility (NHANES 2017–2020, Women 18–59; N=)";
+/* Step 1: Logistic Regression - Model 1 (Unadjusted) */
+PROC LOGISTIC DATA=NHANES.MERGE DESCENDING PLOTS(MAXPOINTS=NONE);
+    WHERE PID in (0,1) AND NOT MISSING(INFERT);
+    CLASS PID (REF='0') / PARAM=REF;       /* 0=No PID, 1=Yes PID */
+    MODEL INFERT(event='1') = PID;         /* outcome = infertility */
+    ODDSRATIO PID;
+    OUTPUT OUT=Model1_raw P=Pred1;
+RUN;
+
+/* Step 2: Logistic Regression - Model 2 (Adjusted for Age) */
+PROC LOGISTIC DATA=NHANES.MERGE DESCENDING PLOTS(MAXPOINTS=NONE);
+    WHERE PID in (0,1) AND NOT MISSING(INFERT);
+    CLASS PID (REF='0') / PARAM=REF;
+    MODEL INFERT(event='1') = PID RIDAGEYR;
+    ODDSRATIO PID;
+    OUTPUT OUT=Model2_raw P=Pred2;
+RUN;
+
+/* Step 3: Logistic Regression - Model 3 (Fully adjusted) */
+PROC LOGISTIC DATA=NHANES.MERGE DESCENDING PLOTS(MAXPOINTS=NONE);
+    WHERE PID in (0,1) AND NOT MISSING(INFERT);
+    CLASS PID(ref='0')
+          RIDRETH3(ref='3')          /* 3 = Non-Hispanic White in NHANES */
+          PIR_CAT(ref='2')           /* Medium PIR */
+          INSURED(ref='1')           /* 1=Yes */
+          ACCESSCARE(ref='1')        /* 1=Yes */
+          / PARAM=REF;
+    MODEL INFERT(event='1') = PID RIDAGEYR RIDRETH3 PIR_CAT INSURED ACCESSCARE;
+    ODDSRATIO PID;
+    OUTPUT OUT=Model3_raw P=Pred3;
+RUN;
+
+*survey weighted analysis;
+/* Model 1 (weighted, unadjusted) */
+proc surveylogistic data=NHANES.MERGE;
+    strata SDMVSTRA;
+    cluster SDMVPSU;
+    weight WTINTPRP;                        /* interview weight */
+    where PID in (0,1) AND NOT MISSING(INFERT);
+    class PID(ref='0') / param=ref;
+    model INFERT(event='1') = PID;
+run;
+/* Model 2 (weighted, age-adjusted) */
+proc surveylogistic data=NHANES.MERGE;
+    strata SDMVSTRA;
+    cluster SDMVPSU;
+    weight WTINTPRP;
+    where PID in (0,1) AND NOT MISSING(INFERT);
+    class PID(ref='0') / param=ref;
+    model INFERT(event='1') = PID RIDAGEYR;
+run;
+/* Model 3 (weighted, fully adjusted) */
+proc surveylogistic data=NHANES.MERGE;
+    strata SDMVSTRA;
+    cluster SDMVPSU;
+    weight WTINTPRP;
+    where PID in (0,1) AND NOT MISSING(INFERT);
+    class PID(ref='0')
+          RIDRETH3(ref='3')
+          PIR_CAT(ref='2')
+          INSURED(ref='1')
+          ACCESSCARE(ref='1') / param=ref;
+    model INFERT(event='1') = PID RIDAGEYR RIDRETH3 PIR_CAT INSURED ACCESSCARE;
+run;
+/* Weighted infertility prevalence (%) for the Table 2 first column */
+ods output CrossTabs=T2_Prev;
+proc surveyfreq data=NHANES.MERGE;
+  strata SDMVSTRA; cluster SDMVPSU; weight WTINTPRP;
+  where PID in (0,1) AND NOT MISSING(INFERT);
+  tables INFERT*PID / row clwt;   /* row% = prevalence within PID group */
+run;
